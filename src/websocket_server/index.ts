@@ -1,10 +1,37 @@
 import { WebSocketServer, WebSocket, RawData } from "ws";
+import { createUser } from "./userModule";
+import { addUserToRoom, createRoom, deleteRoom, getRooms } from "./roomModule";
+import { addShipsToGame, createGame } from "./gameModule";
 
 class MessageHandler {
   private _ws;
+  private wsServer;
 
-  constructor(ws: WebSocket) {
+  constructor(wsServer: WebSocketServer, ws: WebSocket) {
     this._ws = ws;
+    this.wsServer = wsServer;
+  }
+
+  private send(type: string, data: object) {
+    const response =  { 
+      type: type ,
+      data: JSON.stringify(data),
+      id: 0
+    };
+    this._ws.send(JSON.stringify(response));
+  }
+
+  private broadcast(type: string, data: object) {
+    const response =  { 
+      type: type ,
+      data: JSON.stringify(data),
+      id: 0
+    };
+    this.wsServer.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(response));
+      }
+    });
   }
 
   public parse(rawData: RawData) {
@@ -12,13 +39,16 @@ class MessageHandler {
 
     switch (type) {
       case "reg":
-        this.handlRegistration(id, data);
+        this.handlRegistration(data);
         break;
-      case "create_game":
-        // this.createGame();
+      case "create_room":
+        this.handleCreateRoom(id);
         break;
-      case "start_game":
-        // this.startGame();
+      case "add_user_to_room":
+        this.handleAddUserToRoom(id, data);
+        break;
+      case "add_ships":
+        this.handelAddShips(id, data);
         break;
       case "turn":
         // this.turn();
@@ -38,29 +68,49 @@ class MessageHandler {
     }
   }
 
-  private send(data: object) {
-    this._ws.send(JSON.stringify(data));
-  }
-  private handlRegistration(id: number, data: string) {
+  private handelAddShips(userId: number, data: string) {
     const parsedData = JSON.parse(data);
-    this.send({
-      type: "reg",
-      data: JSON.stringify({
-        name: parsedData.name,
-        index: id,
-        error: false,
-        errorText: "",
-      }),
-      id: 0,
-    });
+    const gameId = Number(parsedData.gameId);
+    const game = addShipsToGame(gameId);
+    if (game.playersReady == 2) {
+      this.broadcast('start_game', { ships: parsedData.ships, currentPlayerIndex: userId });
+    }
+  }
+
+  private handleCreateRoom(userId: number): void {
+    const room = createRoom();
+    addUserToRoom(userId, room.roomId);
+    this.broadcast('update_room', getRooms());
+  }
+
+  private handleAddUserToRoom(userId: number, data: string): void {
+    const parsedData = JSON.parse(data);
+    const room = addUserToRoom(userId, parsedData.indexRoom);
+
+    if (room.roomUsers.length === 2) {
+      deleteRoom(room.roomId);
+
+      const game = createGame();
+
+      this.broadcast('create_game', {
+        idGame: game.gameId,
+        idPlayer: userId
+      })
+    }
+  }
+
+  private handlRegistration(data: string) {
+    const parsedData = JSON.parse(data);
+    const user = createUser(parsedData.name, parsedData.password);
+    this.send('reg', user);
   }
 }
 
 export function createWebsocketServer(port: number) {
-  const wss = new WebSocketServer({ port });
+  const wsServer = new WebSocketServer({ port });
 
-  wss.on("connection", function connection(ws) {
-    const handler = new MessageHandler(ws);
+  wsServer.on("connection", function connection(ws) {
+    const handler = new MessageHandler(wsServer, ws);
 
     ws.on("error", console.error);
 
