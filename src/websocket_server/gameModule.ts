@@ -8,6 +8,7 @@ export const createGame = (playerId: number) => {
     gameId: gameId,
     playersReady: 0,
     shipsPerPlayer: {},
+    shotsPerPlayer: {},
     currentPlayerIndex: playerId,
   });
 };
@@ -63,6 +64,32 @@ export const removeGameById = (gameId: number) => {
   delete database.games[gameId];
 };
 
+const getMisses = (ship: IShip) => {
+  const originX = ship.position.x;
+  const originY = ship.position.y;
+  const misses: { x: number; y: number }[] = [];
+
+  const inBounds = (value: number) => {
+    return value >= 0 && value < 10;
+  };
+
+  for (let i = -1; i < ship.length + 1; i++) {
+    for (let j = -1; j < 2; j++) {
+      const deltaX = ship.direction ? j : i;
+      const deltaY = ship.direction ? i : j;
+      const isShipPosition = ship.hitPoints.find(
+        (item) => item.x === originX + deltaX && item.y === originY + deltaY
+      )
+
+      if (!isShipPosition && inBounds(originX + deltaX) && inBounds(originY + deltaY)) {
+        misses.push({ x: originX + deltaX, y: originY + deltaY });
+      }
+    }
+  }
+
+  return misses;
+};
+
 export const getAttackOutcome = (
   x: number,
   y: number,
@@ -82,19 +109,21 @@ export const getAttackOutcome = (
 
   if (ship) {
     if (ship.hitPoints.every((hit) => hit.wasted)) {
-      return "killed";
+      return { status: "killed", misses: getMisses(ship) };
     } else {
-      return "shot";
+      return { status: "shot" };
     }
   } else {
     game.currentPlayerIndex = opponentId;
-    return "miss";
+    return { status: "miss" };
   }
 };
 
 export const isPlayerWon = (game: IGame, playerId: number) => {
   const opponentId = getOpponentId(game, playerId);
-  const isAllOpponentShipsSunk = game.shipsPerPlayer[opponentId].every(ship => ship.hitPoints.every((hit) => hit.wasted));
+  const isAllOpponentShipsSunk = game.shipsPerPlayer[opponentId].every((ship) =>
+    ship.hitPoints.every((hit) => hit.wasted)
+  );
 
   if (isAllOpponentShipsSunk) {
     return true;
@@ -110,21 +139,48 @@ export const updateWinners = (playerId: number) => {
     return;
   }
 
-  const index = database.winners.findIndex(winner => winner.name === player.name);
+  const index = database.winners.findIndex(
+    (winner) => winner.name === player.name
+  );
 
   if (index === -1) {
     database.winners.push({
-      name: player.name, wins: 1
+      name: player.name,
+      wins: 1,
     });
   } else {
-    database.winners[index].wins +=1;
+    database.winners[index].wins += 1;
   }
 };
 
 export const getGameByPlayerId = (playerId: number) => {
-  return Object.values(database.games).find(item => Object.keys(item.shipsPerPlayer).includes(playerId.toString()));
-}
+  return Object.values(database.games).find((item) =>
+    Object.keys(item.shipsPerPlayer).includes(playerId.toString())
+  );
+};
 
 export const getWinners = () => {
   return database.winners;
+};
+
+export const saveShot = (
+  x: number,
+  y: number,
+  game: IGame,
+  playerId: number
+) => {
+  const previousShoots = game.shotsPerPlayer[playerId] ?? [];
+  game.shotsPerPlayer[playerId] = [...previousShoots, { x, y }];
+};
+
+export const getRandomEmptyPosition = (game: IGame, playerId: number) => {
+  const shots = game.shotsPerPlayer[playerId] ?? [];
+  const occupiedSpaces = shots.map(({ x, y }) => y * 10 + x);
+  const availableSpaces = new Array(100)
+    .fill(0)
+    .map((_, index) => index)
+    .filter((value) => !occupiedSpaces.includes(value));
+  const newPositionIndex = Math.floor(Math.random() * availableSpaces.length);
+  const newPosition = availableSpaces[newPositionIndex];
+  return { x: newPosition % 10, y: Math.floor(newPosition / 10) };
 };

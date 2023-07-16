@@ -38,6 +38,7 @@ export interface IGame {
     shipsPerPlayer: Record<number, IShip[]>;
     playersReady: number;
     currentPlayerIndex: number;
+    shotsPerPlayer: Record<number, { x: number, y: number }[]>
 }
 
 export interface IDatabase {

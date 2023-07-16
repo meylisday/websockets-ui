@@ -8,9 +8,11 @@ import {
   getGameById,
   getGameByPlayerId,
   getOpponentId,
+  getRandomEmptyPosition,
   getWinners,
   isPlayerWon,
   removeGameById,
+  saveShot,
   updateWinners,
 } from "./gameModule";
 import { ExtendedWebSocket } from "./types";
@@ -102,16 +104,36 @@ class MessageHandler {
     const parsedData = JSON.parse(data);
     const { gameId, indexPlayer } = parsedData;
     const game = getGameById(gameId);
-    const x = Math.ceil(Math.random() * 10);
-    const y = Math.ceil(Math.random() * 10);
+ 
     if (game && game.currentPlayerIndex === indexPlayer) {
-      const status = getAttackOutcome(x, y, game, indexPlayer);
+      const { x, y } = getRandomEmptyPosition(game, indexPlayer);
+      const { status, misses = [] } = getAttackOutcome(x, y, game, indexPlayer);
+      saveShot(x, y, game, indexPlayer);
       this.broadcast("attack", {
         position: { x, y },
         currentPlayer: indexPlayer,
         status,
       });
       this.broadcast("turn", { currentPlayer: game.currentPlayerIndex });
+
+      if (status === "killed" && misses.length) {
+        for (const miss of misses) {
+          saveShot(miss.x, miss.y, game, indexPlayer);
+          this.broadcast("attack", {
+            position: miss,
+            currentPlayer: indexPlayer,
+            status: "miss",
+          });
+        }
+      }
+
+      if (isPlayerWon(game, indexPlayer)) {
+        updateWinners(indexPlayer);
+        removeGameById(game.gameId);
+
+        this.broadcast("finish", { winPlayer: indexPlayer });
+        this.broadcast("update_winners", getWinners())
+      }
     }
   }
 
@@ -120,13 +142,25 @@ class MessageHandler {
     const { x, y, gameId, indexPlayer } = parsedData;
     const game = getGameById(gameId);
     if (game && game.currentPlayerIndex === indexPlayer) {
-      const status = getAttackOutcome(x, y, game, indexPlayer);
+      saveShot(x, y, game, indexPlayer);
+      const { status, misses = [] } = getAttackOutcome(x, y, game, indexPlayer);
       this.broadcast("attack", {
         position: { x, y },
         currentPlayer: indexPlayer,
         status,
       });
       this.broadcast("turn", { currentPlayer: game.currentPlayerIndex });
+
+      if (status === "killed" && misses.length) {
+        for (const miss of misses) {
+          saveShot(miss.x, miss.y, game, indexPlayer);
+          this.broadcast("attack", {
+            position: miss,
+            currentPlayer: indexPlayer,
+            status: "miss",
+          });
+        }
+      }
 
       if (isPlayerWon(game, indexPlayer)) {
         updateWinners(indexPlayer);
