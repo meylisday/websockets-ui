@@ -2,8 +2,8 @@ import { IUser } from "./types";
 import { database } from "./databaseModule";
 import { generateNewId } from "./utils";
 
-const createUser = (name: string, password: string): object => {
-  const id = 0; // generateNewId(database.users);
+const createUser = (name: string, password: string) => {
+  const id = generateNewId(database.users);
   database.users[id] = {
     index: id,
     name: name,

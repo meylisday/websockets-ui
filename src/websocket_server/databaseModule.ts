@@ -4,4 +4,5 @@ export const database: IDatabase = {
     users: {},
     rooms: {},
     games: {},
+    winners: []
 };
