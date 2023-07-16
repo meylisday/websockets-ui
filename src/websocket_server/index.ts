@@ -6,6 +6,11 @@ import {
   createGame,
   getAttackOutcome,
   getGameById,
+  getGameByPlayerId,
+  getOpponentId,
+  getWinners,
+  isPlayerWon,
+  removeGameById,
   updateWinners,
 } from "./gameModule";
 import { ExtendedWebSocket } from "./types";
@@ -36,7 +41,7 @@ class MessageHandler {
     this._ws.send(JSON.stringify(response));
   }
 
-  private broadcast(type: string, data: object) {
+  public broadcast(type: string, data: object) {
     const response = {
       type: type,
       data: JSON.stringify(data),
@@ -91,9 +96,6 @@ class MessageHandler {
       case "randomAttack":
         this.handleRandomAttack(data);
       break;
-      case "update_winners":
-        // this.updateWinners();
-        break;
     }
   }
   private handleRandomAttack(data: string) {
@@ -125,6 +127,14 @@ class MessageHandler {
         status,
       });
       this.broadcast("turn", { currentPlayer: game.currentPlayerIndex });
+
+      if (isPlayerWon(game, indexPlayer)) {
+        updateWinners(indexPlayer);
+        removeGameById(game.gameId);
+
+        this.broadcast("finish", { winPlayer: indexPlayer });
+        this.broadcast("update_winners", getWinners())
+      }
     }
   }
 
@@ -174,24 +184,36 @@ class MessageHandler {
     this.id = user.index;
     this.send("reg", user);
     this.send("update_room", getRooms());
-    this.send("update_winners", updateWinners());
+    this.send("update_winners", getWinners());
+  }
+
+  public disconnected = (playerId: number) => {
+    const game = getGameByPlayerId(playerId);
+    if (game) {
+      const opponentId = getOpponentId(game, playerId);
+      updateWinners(opponentId);
+      removeGameById(game.gameId);
+      this.broadcast("finish", { winPlayer: opponentId });
+      this.broadcast("update_winners", getWinners())
+    }
   }
 }
 
 export function createWebsocketServer(port: number) {
   const wsServer = new WebSocketServer({ port });
 
-  wsServer.on("connection", function connection(ws) {
-    const handler = new MessageHandler(wsServer, ws as ExtendedWebSocket);
+  wsServer.on("connection", (ws: ExtendedWebSocket) => {
+    const handler = new MessageHandler(wsServer, ws);
 
     ws.on("error", console.error);
 
-    ws.on("message", function (rawData) {
+    ws.on("message", (rawData) => {
       handler.parse(rawData);
     });
 
     ws.on("close", () => {
-      console.log("handle disconnect");
+      handler.disconnected(ws.id);
+
     });
   });
 }

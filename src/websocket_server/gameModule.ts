@@ -49,15 +49,19 @@ export const addShipsToGame = (
   return game;
 };
 
-const getOpponentId = (game: IGame, playerId: number) => {
-  return Number(Object.keys(game.shipsPerPlayer).find(
-    (key) => Number(key) !== playerId
-  ));
+export const getOpponentId = (game: IGame, playerId: number) => {
+  return Number(
+    Object.keys(game.shipsPerPlayer).find((key) => Number(key) !== playerId)
+  );
 };
 
 export const getGameById = (gameId: number) => {
-    return database.games[gameId];
-}
+  return database.games[gameId];
+};
+
+export const removeGameById = (gameId: number) => {
+  delete database.games[gameId];
+};
 
 export const getAttackOutcome = (
   x: number,
@@ -65,7 +69,7 @@ export const getAttackOutcome = (
   game: IGame,
   playerId: number
 ) => {
-    const opponentId = getOpponentId(game, playerId);
+  const opponentId = getOpponentId(game, playerId);
   const ships = game.shipsPerPlayer[opponentId];
   const ship = ships.find((ship) => {
     const hitPoint = ship.hitPoints.find((hit) => hit.x === x && hit.y === y);
@@ -88,6 +92,39 @@ export const getAttackOutcome = (
   }
 };
 
-export const updateWinners = () => {
+export const isPlayerWon = (game: IGame, playerId: number) => {
+  const opponentId = getOpponentId(game, playerId);
+  const isAllOpponentShipsSunk = game.shipsPerPlayer[opponentId].every(ship => ship.hitPoints.every((hit) => hit.wasted));
+
+  if (isAllOpponentShipsSunk) {
+    return true;
+  }
+
+  return false;
+};
+
+export const updateWinners = (playerId: number) => {
+  const player = database.users[playerId];
+
+  if (!player) {
+    return;
+  }
+
+  const index = database.winners.findIndex(winner => winner.name === player.name);
+
+  if (index === -1) {
+    database.winners.push({
+      name: player.name, wins: 1
+    });
+  } else {
+    database.winners[index].wins +=1;
+  }
+};
+
+export const getGameByPlayerId = (playerId: number) => {
+  return Object.values(database.games).find(item => Object.keys(item.shipsPerPlayer).includes(playerId.toString()));
+}
+
+export const getWinners = () => {
   return database.winners;
 };
